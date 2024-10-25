@@ -2,26 +2,42 @@ import java.util.Collection;
 import java.util.Comparator;
 import java.util.Iterator;
 import java.util.SortedSet;
+import java.util.function.Consumer;
 
 public class SkipListSet <T extends Comparable<T>> implements SortedSet<T> {
     private class SkipListSetIterator implements Iterator<T> {
-        Item walker;
+        Item current;
+        Item prev;
 
         private SkipListSetIterator() {
-            walker = null;
+            prev = null;
+            current = null;
         }
         public SkipListSetIterator(Item head) {
-            walker = head.right;
+            prev = null;
+            current = head.right;
         }
 
         @Override
         public boolean hasNext() {
-            return (walker.right != null);
+            return current != null;
         }
 
         @Override
         public T next() {
-            return walker.data;
+            if(hasNext()) {
+                prev = current;
+                current = current.right;
+                return prev.data;
+            }
+            else return null;
+        }
+
+        @Override
+        public void forEachRemaining(Consumer<? super T> action) {
+            while(hasNext()) {
+                action.accept(next());
+            }
         }
     }
     private class Item implements Comparable<T> {
@@ -236,7 +252,7 @@ public class SkipListSet <T extends Comparable<T>> implements SortedSet<T> {
 
     @Override
     public Iterator<T> iterator() {
-        return new SkipListSetIterator(head.top);
+        return new SkipListSetIterator(head.bottom);
     }
 
     @Override
@@ -357,5 +373,6 @@ public class SkipListSet <T extends Comparable<T>> implements SortedSet<T> {
         skipList.add(4);
         System.out.println(skipList);
         System.out.println("---------------\n");
+
     }
 }
