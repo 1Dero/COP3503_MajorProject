@@ -1,7 +1,4 @@
-import java.util.Collection;
-import java.util.Comparator;
-import java.util.Iterator;
-import java.util.SortedSet;
+import java.util.*;
 import java.util.function.Consumer;
 
 public class SkipListSet <T extends Comparable<T>> implements SortedSet<T> {
@@ -121,40 +118,46 @@ public class SkipListSet <T extends Comparable<T>> implements SortedSet<T> {
             Item left = this.bottom;
             Item right = other.bottom;
 
-            while(left != null && right != null) {
+
+            if(left != null && right != null) {
+                while(true) {
                     right.right = left.right;
                     if(right.right != null) right.right.left = right;
 
                     left.right = right;
                     right.left = left;
 
-                    left = left.up;
-                    right = right.up;
+                    if(left.up != null && right.up != null) {
+                        left = left.up;
+                        right = right.up;
+                    }
+                    else break;
+                }
             }
-        }
+            else throw new IllegalStateException("Cannot connect a null tower");
 
-        // does the same as the function above, but starts at a certain level
-        public void connect(ItemTower other, int level) {
-            Item left = this.bottom;
-            Item right = other.bottom;
-
-            while(left != null && right != null && left.level < level && right.level < level) {
-                left = left.up;
-                right = right.up;
-            }
-
-            while(left != null && right != null) {
-                right.right = left.right;
-                if(right.right != null) right.right.left = right;
-
-                left.right = right;
-                right.left = left;
+            while(left.tower.height < right.tower.height) {
+                while(left.up == null) left = left.left;
 
                 left = left.up;
                 right = right.up;
+                while(true) {
+                    right.right = left.right;
+                    if(right.right != null) right.right.left = right;
+
+                    left.right = right;
+                    right.left = left;
+
+                    if(left.up != null && right.up != null) {
+                        left = left.up;
+                        right = right.up;
+                    }
+                    else break;
+                }
             }
         }
 
+        @Override
         public int compareTo(T o) {
             return top.compareTo(o);
         }
@@ -195,6 +198,7 @@ public class SkipListSet <T extends Comparable<T>> implements SortedSet<T> {
             while(walker.right != null && walker.right.compareTo(target) <= 0) walker = walker.right;
         }
 
+        if(walker.tower == head) return walker.tower.bottom;
         return walker;
     }
 
@@ -267,6 +271,8 @@ public class SkipListSet <T extends Comparable<T>> implements SortedSet<T> {
 
     @Override
     public boolean add(T t) {
+        if(t == null) return false;
+
         int height = generateHeight();
         ItemTower tower = new ItemTower(t, height);
 
@@ -282,21 +288,10 @@ public class SkipListSet <T extends Comparable<T>> implements SortedSet<T> {
         else {
             Item maxSmaller = search(t);
             if(!maxSmaller.isBottom()) throw new IllegalStateException("Should be bottom of tower");
-            if(maxSmaller.data.compareTo(t) == 0) return false; // Item already in list
+            if(maxSmaller.data != null && maxSmaller.data.compareTo(t) == 0) return false; // Item already in list
             else {
                 ItemTower left = maxSmaller.tower;
                 left.connect(tower);
-
-                int prevHeight;
-                while(tower.height > left.height) {
-                    prevHeight = left.height;
-
-                    maxSmaller = left.top;
-                    while(maxSmaller.up == null) maxSmaller = maxSmaller.left;
-
-                    left = maxSmaller.tower;
-                    left.connect(tower, prevHeight+1);
-                }
             }
         }
         size++;
@@ -315,7 +310,13 @@ public class SkipListSet <T extends Comparable<T>> implements SortedSet<T> {
 
     @Override
     public boolean addAll(Collection<? extends T> c) {
-        return false;
+        boolean changed = false;
+        for(T ele : c) {
+            if(add(ele)) changed = true;
+//            System.out.println(this);
+//            System.out.println("---------------\n");
+        }
+        return changed;
     }
 
     @Override
@@ -325,12 +326,21 @@ public class SkipListSet <T extends Comparable<T>> implements SortedSet<T> {
 
     @Override
     public boolean removeAll(Collection<?> c) {
-        return false;
+        boolean changed = false;
+        if(!(c.getClass().getGenericSuperclass() instanceof Comparable)) return changed;
+        for(Object ele : c) {
+            if(remove(ele)) changed = true;
+//            System.out.println(this);
+//            System.out.println("---------------\n");
+        }
+        return changed;
     }
 
     @Override
     public void clear() {
-
+        head = new ItemTower(null, 1);
+        size = 0;
+        maxHeight = 1;
     }
 
     @Override
@@ -358,19 +368,17 @@ public class SkipListSet <T extends Comparable<T>> implements SortedSet<T> {
         System.out.println(skipList);
         System.out.println("---------------\n");
 
-        skipList.add(1);
-        System.out.println(skipList);
-        System.out.println("---------------\n");
-        skipList.add(2);
-        System.out.println(skipList);
-        System.out.println("---------------\n");
-        skipList.add(5);
-        System.out.println(skipList);
-        System.out.println("---------------\n");
-        skipList.add(3);
-        System.out.println(skipList);
-        System.out.println("---------------\n");
-        skipList.add(4);
+        ArrayList<Integer> input = new ArrayList<>();
+        input.add(2);
+        input.add(4);
+        input.add(7);
+        input.add(5);
+        input.add(9);
+        input.add(3);
+        input.add(6);
+        input.add(1);
+
+        skipList.addAll(input);
         System.out.println(skipList);
         System.out.println("---------------\n");
 
