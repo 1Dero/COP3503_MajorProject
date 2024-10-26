@@ -253,6 +253,7 @@ public class SkipListSet <T extends Comparable<T>> implements SortedSet<T> {
     public boolean contains(Object o) {
         try {
             Item ret = search((T) o);
+            if(ret.data == null) ret = ret.right;
             return ret.data.equals(o);
         }
         catch(ClassCastException e) {
@@ -433,7 +434,6 @@ public class SkipListSet <T extends Comparable<T>> implements SortedSet<T> {
         skipList.addAll(input);
         System.out.println(skipList);
         System.out.println("---------------\n");
-
 //        skipList.printPointers();
 
         ArrayList<Integer> remove = new ArrayList<>();
