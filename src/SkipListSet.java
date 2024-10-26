@@ -210,33 +210,41 @@ public class SkipListSet <T extends Comparable<T>> implements SortedSet<T> {
     }
 
     @Override
+    // NOT IMPLEMENTING
     public Comparator<? super T> comparator() {
         return null;
     }
 
     @Override
+    // NOT IMPLEMENTING
     public SortedSet<T> subSet(T fromElement, T toElement) {
         return null;
     }
 
     @Override
+    // NOT IMPLEMENTING
     public SortedSet<T> headSet(T toElement) {
         return null;
     }
 
     @Override
+    // NOT IMPLEMENTING
     public SortedSet<T> tailSet(T fromElement) {
+
         return null;
     }
 
     @Override
     public T first() {
-        return null;
+        return head.bottom.right.data;
     }
 
     @Override
     public T last() {
-        return null;
+        Iterator<T> it = iterator();
+        T last = null;
+        while(it.hasNext()) last = it.next();
+        return last;
     }
 
     @Override
