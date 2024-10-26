@@ -1,3 +1,4 @@
+import java.lang.reflect.Type;
 import java.util.*;
 import java.util.function.Consumer;
 
@@ -76,7 +77,7 @@ public class SkipListSet <T extends Comparable<T>> implements SortedSet<T> {
 
         @Override
         public String toString() {
-            return String.format("Data = %s, Level = %d", data, level);
+            return String.format("(h%d: %s)", level, (data==null)? "null":data);
         }
     }
     private class ItemTower implements Comparable<T> {
@@ -112,8 +113,7 @@ public class SkipListSet <T extends Comparable<T>> implements SortedSet<T> {
             height++;
         }
 
-        // Links the pointers of this tower to the pointers that are at the same level in the other tower.
-        // Also reconnects any broken links properly.
+        // Links the pointers of the other tower to all the pointers of the same level to the left
         public void connect(ItemTower other) {
             Item left = this.bottom;
             Item right = other.bottom;
@@ -300,7 +300,32 @@ public class SkipListSet <T extends Comparable<T>> implements SortedSet<T> {
 
     @Override
     public boolean remove(Object o) {
-        return false;
+        if(o == null) return false;
+
+        try {
+            Item target = search((T) o);
+
+            if(target.data == o) {
+                // Target found
+
+                // Removing target from skipList by linking the left and right to each other
+                while(target != null) {
+                    target.left.right = target.right;
+                    if(target.right != null) target.right.left = target.left;
+
+                    target = target.up;
+                }
+
+                return true;
+            }
+            else {
+                // Target not found
+                return false;
+            }
+        }
+        catch(ClassCastException e) {
+            throw new IllegalStateException("Object isn't same type as list");
+        }
     }
 
     @Override
@@ -327,7 +352,6 @@ public class SkipListSet <T extends Comparable<T>> implements SortedSet<T> {
     @Override
     public boolean removeAll(Collection<?> c) {
         boolean changed = false;
-        if(!(c.getClass().getGenericSuperclass() instanceof Comparable)) return changed;
         for(Object ele : c) {
             if(remove(ele)) changed = true;
 //            System.out.println(this);
@@ -362,6 +386,21 @@ public class SkipListSet <T extends Comparable<T>> implements SortedSet<T> {
         return s.toString();
     }
 
+    // For debugging
+    public void printPointers() {
+        Item horizontalWalker = head.bottom;
+        Item verticalWalker = null;
+        while(horizontalWalker != null) {
+            verticalWalker = horizontalWalker;
+            while(verticalWalker != null) {
+                System.out.printf("[%s -> %s] ", verticalWalker, verticalWalker.right);
+                verticalWalker = verticalWalker.up;
+            }
+            horizontalWalker = horizontalWalker.right;
+            System.out.println();
+        }
+    }
+
     // For testing
     public static void main(String[] args) {
         SkipListSet<Integer> skipList = new SkipListSet<>();
@@ -382,5 +421,20 @@ public class SkipListSet <T extends Comparable<T>> implements SortedSet<T> {
         System.out.println(skipList);
         System.out.println("---------------\n");
 
+//        skipList.printPointers();
+
+        ArrayList<Integer> remove = new ArrayList<>();
+        remove.add(7);
+        remove.add(1);
+        remove.add(8);
+        remove.add(6);
+
+        skipList.removeAll(remove);
+
+        System.out.println(skipList);
+        System.out.println("---------------\n");
+
+
+//        skipList.printPointers();
     }
 }
