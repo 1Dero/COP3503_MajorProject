@@ -1,27 +1,46 @@
-import java.util.Collection;
-import java.util.Comparator;
-import java.util.Iterator;
-import java.util.SortedSet;
+import java.lang.reflect.Type;
+import java.util.*;
+import java.util.function.Consumer;
 
 public class SkipListSet <T extends Comparable<T>> implements SortedSet<T> {
     private class SkipListSetIterator implements Iterator<T> {
-        Item walker;
+        Item current;
+        Item prev;
 
         private SkipListSetIterator() {
-            walker = null;
-        }
-        public SkipListSetIterator(Item head) {
-            walker = head.right;
+            prev = null;
+            current = head.bottom;
         }
 
         @Override
         public boolean hasNext() {
-            return (walker.right != null);
+            return current != null;
         }
 
         @Override
         public T next() {
-            return walker.data;
+            if(hasNext()) {
+                prev = current;
+                current = current.right;
+                return prev.data;
+            }
+            else return null;
+        }
+
+        @Override
+        public void remove() {
+            if(prev != null) {
+                SkipListSet.this.remove(prev.data);
+                prev = null;
+            }
+            throw new IllegalStateException("The next method has not yet been called, or the remove method has already been called after the last call to the next method");
+        }
+
+        @Override
+        public void forEachRemaining(Consumer<? super T> action) {
+            while(hasNext()) {
+                action.accept(next());
+            }
         }
     }
     private class Item implements Comparable<T> {
@@ -63,7 +82,7 @@ public class SkipListSet <T extends Comparable<T>> implements SortedSet<T> {
 
         @Override
         public String toString() {
-            return String.format("Data = %s, Level = %d", data, level);
+            return String.format("(h%d: %s)", level, (data==null)? "null":data);
         }
     }
     private class ItemTower implements Comparable<T> {
@@ -98,47 +117,68 @@ public class SkipListSet <T extends Comparable<T>> implements SortedSet<T> {
             top = item;
             height++;
         }
+        // Removes an item from the top of tower
+        private void pop() {
+            if(this.isEmpty() || bottom == top) return;
 
-        // Links the pointers of this tower to the pointers that are at the same level in the other tower.
-        // Also reconnects any broken links properly.
+            if(top.left != null) top.left.right = top.right;
+            if(top.right != null) top.right.left = top.left;
+            top = top.down;
+            top.up = null;
+            height--;
+        }
+
+        // Changes the height of an itemTower
+        public void setHeight(int newHeight) {
+            while(height > newHeight) pop();
+            while(height < newHeight) add(new Item(top.data, top.level+1, this));
+        }
+
+        // Links the pointers of the other tower to all the pointers of the same level to the left
         public void connect(ItemTower other) {
             Item left = this.bottom;
             Item right = other.bottom;
 
-            while(left != null && right != null) {
+
+            if(left != null && right != null) {
+                while(true) {
                     right.right = left.right;
                     if(right.right != null) right.right.left = right;
 
                     left.right = right;
                     right.left = left;
 
-                    left = left.up;
-                    right = right.up;
+                    if(left.up != null && right.up != null) {
+                        left = left.up;
+                        right = right.up;
+                    }
+                    else break;
+                }
             }
-        }
+            else throw new IllegalStateException("Cannot connect a null tower");
 
-        // does the same as the function above, but starts at a certain level
-        public void connect(ItemTower other, int level) {
-            Item left = this.bottom;
-            Item right = other.bottom;
-
-            while(left != null && right != null && left.level < level && right.level < level) {
-                left = left.up;
-                right = right.up;
-            }
-
-            while(left != null && right != null) {
-                right.right = left.right;
-                if(right.right != null) right.right.left = right;
-
-                left.right = right;
-                right.left = left;
+            while(left.tower.height < right.tower.height) {
+                while(left.up == null) left = left.left;
 
                 left = left.up;
                 right = right.up;
+                while(true) {
+                    right.right = left.right;
+                    if(right.right != null) right.right.left = right;
+
+                    left.right = right;
+                    right.left = left;
+
+                    if(left.up != null && right.up != null) {
+                        left = left.up;
+                        right = right.up;
+                    }
+                    else break;
+                }
             }
         }
 
+        @Override
         public int compareTo(T o) {
             return top.compareTo(o);
         }
@@ -166,9 +206,55 @@ public class SkipListSet <T extends Comparable<T>> implements SortedSet<T> {
         maxHeight = head.height;
         size = 0;
     }
+    public SkipListSet(Collection<T> c) {
+        head = new ItemTower(null, 1);
+        maxHeight = head.height;
+        size = 0;
+
+        addAll(c);
+    }
 
     public void reBalance() {
+        Item current = getLastItem();
+        int localMaxHeight = 1;
 
+        while(current.left != null) {
+            Item prevTop = current.tower.top;
+            int newHeight = generateHeight();
+
+            // Adjusting head's height if needed
+            if(newHeight >= localMaxHeight) localMaxHeight = newHeight + 1;
+            if(newHeight >= maxHeight) {
+                maxHeight = newHeight + 1;
+                head.setHeight(maxHeight);
+            }
+
+            if(prevTop.level != newHeight) {
+                current.tower.setHeight(newHeight);
+                while(prevTop.level < newHeight) {
+                    // The height cut off the pointers of towers to the left
+
+                    Item walker = prevTop.left;
+                    prevTop = prevTop.up;
+
+                    while(walker.up == null) walker = walker.left;
+                    walker = walker.up;
+
+                    prevTop.right = walker.right;
+                    if(walker.right != null) walker.right.left = prevTop;
+
+                    walker.right = prevTop;
+                    prevTop.left = walker;
+                }
+            }
+
+            current = current.left;
+        }
+
+        if(maxHeight > localMaxHeight) {
+            head.setHeight(localMaxHeight);
+            maxHeight = localMaxHeight;
+        }
     }
 
     // Returns item containing the target, or returns the item that contains the greatest value smaller than target.
@@ -179,6 +265,7 @@ public class SkipListSet <T extends Comparable<T>> implements SortedSet<T> {
             while(walker.right != null && walker.right.compareTo(target) <= 0) walker = walker.right;
         }
 
+        if(walker.tower == head) return walker.tower.bottom;
         return walker;
     }
 
@@ -190,33 +277,46 @@ public class SkipListSet <T extends Comparable<T>> implements SortedSet<T> {
     }
 
     @Override
+    // NOT IMPLEMENTING
     public Comparator<? super T> comparator() {
         return null;
     }
 
     @Override
+    // NOT IMPLEMENTING
     public SortedSet<T> subSet(T fromElement, T toElement) {
-        return null;
+        throw new UnsupportedOperationException();
     }
 
     @Override
+    // NOT IMPLEMENTING
     public SortedSet<T> headSet(T toElement) {
-        return null;
+        throw new UnsupportedOperationException();
     }
 
     @Override
+    // NOT IMPLEMENTING
     public SortedSet<T> tailSet(T fromElement) {
-        return null;
+        throw new UnsupportedOperationException();
     }
 
     @Override
     public T first() {
-        return null;
+        return head.bottom.right.data;
+    }
+
+    private Item getLastItem() {
+        Item walker = head.top;
+        while(walker.down != null) {
+            walker = walker.down;
+            while(walker.right != null) walker = walker.right;
+        }
+        return walker;
     }
 
     @Override
     public T last() {
-        return null;
+        return getLastItem().data;
     }
 
     @Override
@@ -231,33 +331,44 @@ public class SkipListSet <T extends Comparable<T>> implements SortedSet<T> {
 
     @Override
     public boolean contains(Object o) {
-        return false;
+        try {
+            Item ret = search((T) o);
+            if(ret.data == null) ret = ret.right;
+            return ret.data.equals(o);
+        }
+        catch(ClassCastException e) {
+            return false;
+        }
     }
 
     @Override
     public Iterator<T> iterator() {
-        return new SkipListSetIterator(head.top);
+        return new SkipListSetIterator();
     }
 
     @Override
+    // NOT IMPLEMENTING
     public Object[] toArray() {
         return new Object[0];
     }
 
     @Override
+    // NOT IMPLEMENTING
     public <T1> T1[] toArray(T1[] a) {
         return null;
     }
 
     @Override
     public boolean add(T t) {
+        if(t == null) return false;
+
         int height = generateHeight();
         ItemTower tower = new ItemTower(t, height);
 
         // Extending head to be the tallest tower if needed
         if(height >= maxHeight) {
             maxHeight = height+1;
-            while(head.height < maxHeight) head.add(new Item(head.top.data, head.top.level+1, head));
+            head.setHeight(maxHeight);
         }
 
         if(this.isEmpty()) {
@@ -266,21 +377,10 @@ public class SkipListSet <T extends Comparable<T>> implements SortedSet<T> {
         else {
             Item maxSmaller = search(t);
             if(!maxSmaller.isBottom()) throw new IllegalStateException("Should be bottom of tower");
-            if(maxSmaller.data.compareTo(t) == 0) return false; // Item already in list
+            if(maxSmaller.data != null && maxSmaller.data.compareTo(t) == 0) return false; // Item already in list
             else {
                 ItemTower left = maxSmaller.tower;
                 left.connect(tower);
-
-                int prevHeight;
-                while(tower.height > left.height) {
-                    prevHeight = left.height;
-
-                    maxSmaller = left.top;
-                    while(maxSmaller.up == null) maxSmaller = maxSmaller.left;
-
-                    left = maxSmaller.tower;
-                    left.connect(tower, prevHeight+1);
-                }
             }
         }
         size++;
@@ -289,32 +389,76 @@ public class SkipListSet <T extends Comparable<T>> implements SortedSet<T> {
 
     @Override
     public boolean remove(Object o) {
-        return false;
+        if(o == null) return false;
+
+        try {
+            Item target = search((T) o);
+
+            if(target.data.equals(o)) {
+                // Target found
+
+                // Removing target from skipList by linking the left and right to each other
+                while(target != null) {
+                    target.left.right = target.right;
+                    if(target.right != null) target.right.left = target.left;
+
+                    target = target.up;
+                }
+
+                return true;
+            }
+            else {
+                // Target not found
+                return false;
+            }
+        }
+        catch(ClassCastException e) {
+            throw new IllegalStateException("Object isn't same type as list");
+        }
     }
 
     @Override
     public boolean containsAll(Collection<?> c) {
-        return false;
+        for(Object o : c) {
+            if(!contains(o)) return false;
+        }
+
+        return true;
     }
 
     @Override
     public boolean addAll(Collection<? extends T> c) {
-        return false;
+        boolean changed = false;
+        for(T ele : c) {
+            if(add(ele)) changed = true;
+//            System.out.println(this);
+//            System.out.println("---------------\n");
+        }
+        return changed;
     }
 
     @Override
+    // NOT IMPLEMENTING
     public boolean retainAll(Collection<?> c) {
         return false;
     }
 
     @Override
     public boolean removeAll(Collection<?> c) {
-        return false;
+        boolean changed = false;
+        for(Object ele : c) {
+            if(remove(ele)) changed = true;
+//            System.out.println(this);
+//            System.out.println("---------------\n");
+        }
+        return changed;
     }
 
     @Override
     public void clear() {
-
+        head = new ItemTower(null, 1);
+        size = 0;
+        maxHeight = 1;
     }
 
     @Override
@@ -336,26 +480,54 @@ public class SkipListSet <T extends Comparable<T>> implements SortedSet<T> {
         return s.toString();
     }
 
+    // For debugging
+    public void printPointers() {
+        Item horizontalWalker = head.bottom;
+        Item verticalWalker = null;
+        while(horizontalWalker != null) {
+            verticalWalker = horizontalWalker;
+            while(verticalWalker != null) {
+                System.out.printf("[%s -> %s] ", verticalWalker, verticalWalker.right);
+                verticalWalker = verticalWalker.up;
+            }
+            horizontalWalker = horizontalWalker.right;
+            System.out.println();
+        }
+    }
+
     // For testing
     public static void main(String[] args) {
         SkipListSet<Integer> skipList = new SkipListSet<>();
+
+        ArrayList<Integer> input = new ArrayList<>();
+        input.add(2);
+        input.add(4);
+        input.add(7);
+        input.add(5);
+        input.add(9);
+        input.add(3);
+        input.add(6);
+        input.add(1);
+
+        System.out.println("\n\n\nAdding....\n");
+        skipList.addAll(input);
+        System.out.println(skipList);
+        System.out.println("---------------\n");
+//        skipList.printPointers();
+
+        ArrayList<Integer> remove = new ArrayList<>();
+        remove.add(10);
+        remove.add(9);
+
+        System.out.println("\n\n\nRemoving....\n");
+        skipList.removeAll(remove);
         System.out.println(skipList);
         System.out.println("---------------\n");
 
-        skipList.add(1);
+        System.out.println("\n\n\nRe-balancing....\n");
+        skipList.reBalance();
         System.out.println(skipList);
         System.out.println("---------------\n");
-        skipList.add(2);
-        System.out.println(skipList);
-        System.out.println("---------------\n");
-        skipList.add(5);
-        System.out.println(skipList);
-        System.out.println("---------------\n");
-        skipList.add(3);
-        System.out.println(skipList);
-        System.out.println("---------------\n");
-        skipList.add(4);
-        System.out.println(skipList);
-        System.out.println("---------------\n");
+        skipList.printPointers();
     }
 }
