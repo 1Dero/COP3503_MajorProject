@@ -258,7 +258,6 @@ public class SkipListSet <T extends Comparable<T>> implements SortedSet<T> {
         catch(ClassCastException e) {
             return false;
         }
-        return false;
     }
 
     @Override
