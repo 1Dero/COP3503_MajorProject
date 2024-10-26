@@ -9,11 +9,7 @@ public class SkipListSet <T extends Comparable<T>> implements SortedSet<T> {
 
         private SkipListSetIterator() {
             prev = null;
-            current = null;
-        }
-        public SkipListSetIterator(Item head) {
-            prev = null;
-            current = head.right;
+            current = head.bottom;
         }
 
         @Override
@@ -29,6 +25,15 @@ public class SkipListSet <T extends Comparable<T>> implements SortedSet<T> {
                 return prev.data;
             }
             else return null;
+        }
+
+        @Override
+        public void remove() {
+            if(prev != null) {
+                SkipListSet.this.remove(prev.data);
+                prev = null;
+            }
+            throw new IllegalStateException("The next method has not yet been called, or the remove method has already been called after the last call to the next method");
         }
 
         @Override
@@ -112,40 +117,64 @@ public class SkipListSet <T extends Comparable<T>> implements SortedSet<T> {
             top = item;
             height++;
         }
-
-        // Removes an item from the top of the tower
+        // Removes an item from the top of tower
         private void pop() {
-            Item removed = top;
-            if(removed.left != null) removed.left.right = removed.right;
-            if(removed.right != null) removed.right.left = removed.left;
+            if(this.isEmpty() || bottom == top) return;
+
+            if(top.left != null) top.left.right = top.right;
+            if(top.right != null) top.right.left = top.left;
             top = top.down;
             top.up = null;
             height--;
         }
 
-        // Connects the same level items in both towers
+        // Changes the height of an itemTower
+        public void setHeight(int newHeight) {
+            while(height > newHeight) pop();
+            while(height < newHeight) add(new Item(top.data, top.level+1, this));
+        }
+
+        // Links the pointers of the other tower to all the pointers of the same level to the left
         public void connect(ItemTower other) {
             Item left = this.bottom;
             Item right = other.bottom;
 
 
-            while(left != null && right != null) {
-                right.left = left;
-                left.right = right;
+            if(left != null && right != null) {
+                while(true) {
+                    right.right = left.right;
+                    if(right.right != null) right.right.left = right;
+
+                    left.right = right;
+                    right.left = left;
+
+                    if(left.up != null && right.up != null) {
+                        left = left.up;
+                        right = right.up;
+                    }
+                    else break;
+                }
+            }
+            else throw new IllegalStateException("Cannot connect a null tower");
+
+            while(left.tower.height < right.tower.height) {
+                while(left.up == null) left = left.left;
 
                 left = left.up;
                 right = right.up;
-            }
-        }
+                while(true) {
+                    right.right = left.right;
+                    if(right.right != null) right.right.left = right;
 
-        // Changes the height of a tower
-        public void setHeight(int newHeight) {
+                    left.right = right;
+                    right.left = left;
 
-            if(newHeight < height) {
-                while(height != newHeight) pop();
-            }
-            else if(newHeight > height){
-                while(height != newHeight) add(new Item(top.data, top.level+1, this));
+                    if(left.up != null && right.up != null) {
+                        left = left.up;
+                        right = right.up;
+                    }
+                    else break;
+                }
             }
         }
 
@@ -156,61 +185,75 @@ public class SkipListSet <T extends Comparable<T>> implements SortedSet<T> {
 
         @Override
         public String toString() {
-            StringBuilder s = new StringBuilder();
-            s.append(String.format("%s : height %d\n", top, height));
+            String s = "";
+            Item walker = bottom;
+            for(int i = 1; i <= height; i++) {
+                s.concat(walker.toString());
+                s.concat("\n");
+                walker = walker.up;
+            }
 
-            return s.toString();
+            return s;
         }
     }
 
-    ItemTower head, tail;
+    ItemTower head;
     int size;
     int maxHeight;
 
     public SkipListSet() {
         head = new ItemTower(null, 1);
-        tail = head;
         maxHeight = head.height;
         size = 0;
     }
+    public SkipListSet(Collection<T> c) {
+        head = new ItemTower(null, 1);
+        maxHeight = head.height;
+        size = 0;
+
+        addAll(c);
+    }
 
     public void reBalance() {
-        // Going to last item in the list
-        Item current = head.bottom.right;
-        maxHeight = 1;
+        Item current = getLastItem();
+        int localMaxHeight = 1;
 
-        while(current != null) {
-            int height = generateHeight();
+        while(current.left != null) {
+            Item prevTop = current.tower.top;
+            int newHeight = generateHeight();
 
-            if(height >= maxHeight) {
-                maxHeight = height+1;
+            // Adjusting head's height if needed
+            if(newHeight >= localMaxHeight) localMaxHeight = newHeight + 1;
+            if(newHeight >= maxHeight) {
+                maxHeight = newHeight + 1;
                 head.setHeight(maxHeight);
             }
 
-            current.tower.setHeight(height);
+            if(prevTop.level != newHeight) {
+                current.tower.setHeight(newHeight);
+                while(prevTop.level < newHeight) {
+                    // The height cut off the pointers of towers to the left
 
-            current = current.right;
-        }
-        System.out.println(this);
-        System.out.println("---------------\n");
-        connectAll();
-    }
+                    Item walker = prevTop.left;
+                    prevTop = prevTop.up;
 
-    // All the towers must be reconnected
-    private void connectAll() {
-        // Turning all the left/right pointers above level 1 to null
-        for(Item currentTower = head.bottom; currentTower != null; currentTower = currentTower.right) {
-            for(Item currentItem = currentTower.up; currentItem != null; currentItem = currentItem.up) {
-                currentItem.right = null;
-                currentItem.left = null;
+                    while(walker.up == null) walker = walker.left;
+                    walker = walker.up;
+
+                    prevTop.right = walker.right;
+                    if(walker.right != null) walker.right.left = prevTop;
+
+                    walker.right = prevTop;
+                    prevTop.left = walker;
+                }
             }
+
+            current = current.left;
         }
 
-        // Connecting towers
-        ItemTower prev = head;
-        for(Item current = head.bottom.right; current != null; current = current.right) {
-            addTower(prev, current.tower, null);
-            prev = current.tower;
+        if(maxHeight > localMaxHeight) {
+            head.setHeight(localMaxHeight);
+            maxHeight = localMaxHeight;
         }
     }
 
@@ -226,40 +269,11 @@ public class SkipListSet <T extends Comparable<T>> implements SortedSet<T> {
         return walker;
     }
 
-    // Randomly generates height for a tower
-    private int generateHeight() {
+    private  int generateHeight() {
         int height = 1;
         while(Math.random() >= 0.5) height++;
 
         return height;
-    }
-
-    // Adds the newTower between left and right towers
-    private void addTower(ItemTower left, ItemTower newTower, ItemTower right) {
-
-        if(right != null) {
-            newTower.connect(right);
-        }
-
-        left.connect(newTower);
-        if(left.height < newTower.height) {
-            Item walker = left.top;
-            Item current = left.top.right.up;
-
-            while(walker.level != newTower.height) {
-                while (walker.up == null) walker = walker.left;
-                walker = walker.up;
-
-                if(walker.level != current.level) throw new IllegalStateException("This should be false");
-
-                current.right = walker.right;
-                if(current.right != null) current.right.left = current;
-                walker.right = current;
-                current.left = walker;
-
-                current = current.up;
-            }
-        }
     }
 
     @Override
@@ -271,20 +285,19 @@ public class SkipListSet <T extends Comparable<T>> implements SortedSet<T> {
     @Override
     // NOT IMPLEMENTING
     public SortedSet<T> subSet(T fromElement, T toElement) {
-        return null;
+        throw new UnsupportedOperationException();
     }
 
     @Override
     // NOT IMPLEMENTING
     public SortedSet<T> headSet(T toElement) {
-        return null;
+        throw new UnsupportedOperationException();
     }
 
     @Override
     // NOT IMPLEMENTING
     public SortedSet<T> tailSet(T fromElement) {
-
-        return null;
+        throw new UnsupportedOperationException();
     }
 
     @Override
@@ -292,9 +305,18 @@ public class SkipListSet <T extends Comparable<T>> implements SortedSet<T> {
         return head.bottom.right.data;
     }
 
+    private Item getLastItem() {
+        Item walker = head.top;
+        while(walker.down != null) {
+            walker = walker.down;
+            while(walker.right != null) walker = walker.right;
+        }
+        return walker;
+    }
+
     @Override
     public T last() {
-        return tail.bottom.data;
+        return getLastItem().data;
     }
 
     @Override
@@ -321,7 +343,7 @@ public class SkipListSet <T extends Comparable<T>> implements SortedSet<T> {
 
     @Override
     public Iterator<T> iterator() {
-        return new SkipListSetIterator(head.bottom);
+        return new SkipListSetIterator();
     }
 
     @Override
@@ -351,7 +373,6 @@ public class SkipListSet <T extends Comparable<T>> implements SortedSet<T> {
 
         if(this.isEmpty()) {
             head.connect(tower);
-            tail = tower;
         }
         else {
             Item maxSmaller = search(t);
@@ -359,8 +380,7 @@ public class SkipListSet <T extends Comparable<T>> implements SortedSet<T> {
             if(maxSmaller.data != null && maxSmaller.data.compareTo(t) == 0) return false; // Item already in list
             else {
                 ItemTower left = maxSmaller.tower;
-                addTower(left, tower, (left.bottom.right == null)? null : left.bottom.right.tower);
-                if(tail == left) tail = tower;
+                left.connect(tower);
             }
         }
         size++;
@@ -378,7 +398,6 @@ public class SkipListSet <T extends Comparable<T>> implements SortedSet<T> {
                 // Target found
 
                 // Removing target from skipList by linking the left and right to each other
-                if(tail == target.tower) target.left.tower = tail;
                 while(target != null) {
                     target.left.right = target.right;
                     if(target.right != null) target.right.left = target.left;
@@ -386,7 +405,6 @@ public class SkipListSet <T extends Comparable<T>> implements SortedSet<T> {
                     target = target.up;
                 }
 
-                size--;
                 return true;
             }
             else {
@@ -414,8 +432,6 @@ public class SkipListSet <T extends Comparable<T>> implements SortedSet<T> {
         for(T ele : c) {
             if(add(ele)) changed = true;
 //            System.out.println(this);
-//            System.out.println("---------------\n");
-//            printPointers();
 //            System.out.println("---------------\n");
         }
         return changed;
@@ -493,40 +509,25 @@ public class SkipListSet <T extends Comparable<T>> implements SortedSet<T> {
         input.add(6);
         input.add(1);
 
-        System.out.println("Adding......");
+        System.out.println("\n\n\nAdding....\n");
         skipList.addAll(input);
-        System.out.println("---------------\n");
-        System.out.println("---------------\n");
-        System.out.println("---------------\n");
-
         System.out.println(skipList);
         System.out.println("---------------\n");
-        skipList.printPointers();
-        System.out.println("---------------\n");
+//        skipList.printPointers();
 
         ArrayList<Integer> remove = new ArrayList<>();
-        remove.add(7);
-        remove.add(1);
-        remove.add(8);
-        remove.add(6);
+        remove.add(10);
+        remove.add(9);
 
-        System.out.println("Removing.......");
+        System.out.println("\n\n\nRemoving....\n");
         skipList.removeAll(remove);
-        System.out.println("---------------\n");
-        System.out.println("---------------\n");
+        System.out.println(skipList);
         System.out.println("---------------\n");
 
+        System.out.println("\n\n\nRe-balancing....\n");
+        skipList.reBalance();
         System.out.println(skipList);
         System.out.println("---------------\n");
         skipList.printPointers();
-        System.out.println("---------------\n");
-
-        System.out.println("ReBalancing.......");
-        System.out.println("---------------\n");
-        System.out.println("---------------\n");
-        System.out.println("---------------\n");
-        skipList.reBalance();
-        skipList.printPointers();
-        System.out.println("---------------\n");
     }
 }
