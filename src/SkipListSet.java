@@ -251,6 +251,13 @@ public class SkipListSet <T extends Comparable<T>> implements SortedSet<T> {
 
     @Override
     public boolean contains(Object o) {
+        try {
+            Item ret = search((T) o);
+            return ret.data.equals(o);
+        }
+        catch(ClassCastException e) {
+            return false;
+        }
         return false;
     }
 
@@ -260,11 +267,13 @@ public class SkipListSet <T extends Comparable<T>> implements SortedSet<T> {
     }
 
     @Override
+    // NOT IMPLEMENTING
     public Object[] toArray() {
         return new Object[0];
     }
 
     @Override
+    // NOT IMPLEMENTING
     public <T1> T1[] toArray(T1[] a) {
         return null;
     }
@@ -305,7 +314,7 @@ public class SkipListSet <T extends Comparable<T>> implements SortedSet<T> {
         try {
             Item target = search((T) o);
 
-            if(target.data == o) {
+            if(target.data.equals(o)) {
                 // Target found
 
                 // Removing target from skipList by linking the left and right to each other
@@ -345,6 +354,7 @@ public class SkipListSet <T extends Comparable<T>> implements SortedSet<T> {
     }
 
     @Override
+    // NOT IMPLEMENTING
     public boolean retainAll(Collection<?> c) {
         return false;
     }
