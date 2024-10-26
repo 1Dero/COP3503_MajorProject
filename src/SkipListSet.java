@@ -338,7 +338,11 @@ public class SkipListSet <T extends Comparable<T>> implements SortedSet<T> {
 
     @Override
     public boolean containsAll(Collection<?> c) {
-        return false;
+        for(Object o : c) {
+            if(!contains(o)) return false;
+        }
+
+        return true;
     }
 
     @Override
