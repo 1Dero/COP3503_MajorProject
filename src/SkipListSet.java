@@ -113,47 +113,39 @@ public class SkipListSet <T extends Comparable<T>> implements SortedSet<T> {
             height++;
         }
 
-        // Links the pointers of the other tower to all the pointers of the same level to the left
+        // Removes an item from the top of the tower
+        private void pop() {
+            Item removed = top;
+            if(removed.left != null) removed.left.right = removed.right;
+            if(removed.right != null) removed.right.left = removed.left;
+            top = top.down;
+            top.up = null;
+            height--;
+        }
+
+        // Connects the same level items in both towers
         public void connect(ItemTower other) {
             Item left = this.bottom;
             Item right = other.bottom;
 
 
-            if(left != null && right != null) {
-                while(true) {
-                    right.right = left.right;
-                    if(right.right != null) right.right.left = right;
-
-                    left.right = right;
-                    right.left = left;
-
-                    if(left.up != null && right.up != null) {
-                        left = left.up;
-                        right = right.up;
-                    }
-                    else break;
-                }
-            }
-            else throw new IllegalStateException("Cannot connect a null tower");
-
-            while(left.tower.height < right.tower.height) {
-                while(left.up == null) left = left.left;
+            while(left != null && right != null) {
+                right.left = left;
+                left.right = right;
 
                 left = left.up;
                 right = right.up;
-                while(true) {
-                    right.right = left.right;
-                    if(right.right != null) right.right.left = right;
+            }
+        }
 
-                    left.right = right;
-                    right.left = left;
+        // Changes the height of a tower
+        public void setHeight(int newHeight) {
 
-                    if(left.up != null && right.up != null) {
-                        left = left.up;
-                        right = right.up;
-                    }
-                    else break;
-                }
+            if(newHeight < height) {
+                while(height != newHeight) pop();
+            }
+            else if(newHeight > height){
+                while(height != newHeight) add(new Item(top.data, top.level+1, this));
             }
         }
 
@@ -164,30 +156,62 @@ public class SkipListSet <T extends Comparable<T>> implements SortedSet<T> {
 
         @Override
         public String toString() {
-            String s = "";
-            Item walker = bottom;
-            for(int i = 1; i <= height; i++) {
-                s.concat(walker.toString());
-                s.concat("\n");
-                walker = walker.up;
-            }
+            StringBuilder s = new StringBuilder();
+            s.append(String.format("%s : height %d\n", top, height));
 
-            return s;
+            return s.toString();
         }
     }
 
-    ItemTower head;
+    ItemTower head, tail;
     int size;
     int maxHeight;
 
     public SkipListSet() {
         head = new ItemTower(null, 1);
+        tail = head;
         maxHeight = head.height;
         size = 0;
     }
 
     public void reBalance() {
+        // Going to last item in the list
+        Item current = head.bottom.right;
+        maxHeight = 1;
 
+        while(current != null) {
+            int height = generateHeight();
+
+            if(height >= maxHeight) {
+                maxHeight = height+1;
+                head.setHeight(maxHeight);
+            }
+
+            current.tower.setHeight(height);
+
+            current = current.right;
+        }
+        System.out.println(this);
+        System.out.println("---------------\n");
+        connectAll();
+    }
+
+    // All the towers must be reconnected
+    private void connectAll() {
+        // Turning all the left/right pointers above level 1 to null
+        for(Item currentTower = head.bottom; currentTower != null; currentTower = currentTower.right) {
+            for(Item currentItem = currentTower.up; currentItem != null; currentItem = currentItem.up) {
+                currentItem.right = null;
+                currentItem.left = null;
+            }
+        }
+
+        // Connecting towers
+        ItemTower prev = head;
+        for(Item current = head.bottom.right; current != null; current = current.right) {
+            addTower(prev, current.tower, null);
+            prev = current.tower;
+        }
     }
 
     // Returns item containing the target, or returns the item that contains the greatest value smaller than target.
@@ -202,11 +226,40 @@ public class SkipListSet <T extends Comparable<T>> implements SortedSet<T> {
         return walker;
     }
 
-    private  int generateHeight() {
+    // Randomly generates height for a tower
+    private int generateHeight() {
         int height = 1;
         while(Math.random() >= 0.5) height++;
 
         return height;
+    }
+
+    // Adds the newTower between left and right towers
+    private void addTower(ItemTower left, ItemTower newTower, ItemTower right) {
+
+        if(right != null) {
+            newTower.connect(right);
+        }
+
+        left.connect(newTower);
+        if(left.height < newTower.height) {
+            Item walker = left.top;
+            Item current = left.top.right.up;
+
+            while(walker.level != newTower.height) {
+                while (walker.up == null) walker = walker.left;
+                walker = walker.up;
+
+                if(walker.level != current.level) throw new IllegalStateException("This should be false");
+
+                current.right = walker.right;
+                if(current.right != null) current.right.left = current;
+                walker.right = current;
+                current.left = walker;
+
+                current = current.up;
+            }
+        }
     }
 
     @Override
@@ -241,10 +294,7 @@ public class SkipListSet <T extends Comparable<T>> implements SortedSet<T> {
 
     @Override
     public T last() {
-        Iterator<T> it = iterator();
-        T last = null;
-        while(it.hasNext()) last = it.next();
-        return last;
+        return tail.bottom.data;
     }
 
     @Override
@@ -296,11 +346,12 @@ public class SkipListSet <T extends Comparable<T>> implements SortedSet<T> {
         // Extending head to be the tallest tower if needed
         if(height >= maxHeight) {
             maxHeight = height+1;
-            while(head.height < maxHeight) head.add(new Item(head.top.data, head.top.level+1, head));
+            head.setHeight(maxHeight);
         }
 
         if(this.isEmpty()) {
             head.connect(tower);
+            tail = tower;
         }
         else {
             Item maxSmaller = search(t);
@@ -308,7 +359,8 @@ public class SkipListSet <T extends Comparable<T>> implements SortedSet<T> {
             if(maxSmaller.data != null && maxSmaller.data.compareTo(t) == 0) return false; // Item already in list
             else {
                 ItemTower left = maxSmaller.tower;
-                left.connect(tower);
+                addTower(left, tower, (left.bottom.right == null)? null : left.bottom.right.tower);
+                if(tail == left) tail = tower;
             }
         }
         size++;
@@ -326,6 +378,7 @@ public class SkipListSet <T extends Comparable<T>> implements SortedSet<T> {
                 // Target found
 
                 // Removing target from skipList by linking the left and right to each other
+                if(tail == target.tower) target.left.tower = tail;
                 while(target != null) {
                     target.left.right = target.right;
                     if(target.right != null) target.right.left = target.left;
@@ -333,6 +386,7 @@ public class SkipListSet <T extends Comparable<T>> implements SortedSet<T> {
                     target = target.up;
                 }
 
+                size--;
                 return true;
             }
             else {
@@ -360,6 +414,8 @@ public class SkipListSet <T extends Comparable<T>> implements SortedSet<T> {
         for(T ele : c) {
             if(add(ele)) changed = true;
 //            System.out.println(this);
+//            System.out.println("---------------\n");
+//            printPointers();
 //            System.out.println("---------------\n");
         }
         return changed;
@@ -426,8 +482,6 @@ public class SkipListSet <T extends Comparable<T>> implements SortedSet<T> {
     // For testing
     public static void main(String[] args) {
         SkipListSet<Integer> skipList = new SkipListSet<>();
-        System.out.println(skipList);
-        System.out.println("---------------\n");
 
         ArrayList<Integer> input = new ArrayList<>();
         input.add(2);
@@ -439,10 +493,16 @@ public class SkipListSet <T extends Comparable<T>> implements SortedSet<T> {
         input.add(6);
         input.add(1);
 
+        System.out.println("Adding......");
         skipList.addAll(input);
+        System.out.println("---------------\n");
+        System.out.println("---------------\n");
+        System.out.println("---------------\n");
+
         System.out.println(skipList);
         System.out.println("---------------\n");
-//        skipList.printPointers();
+        skipList.printPointers();
+        System.out.println("---------------\n");
 
         ArrayList<Integer> remove = new ArrayList<>();
         remove.add(7);
@@ -450,12 +510,23 @@ public class SkipListSet <T extends Comparable<T>> implements SortedSet<T> {
         remove.add(8);
         remove.add(6);
 
+        System.out.println("Removing.......");
         skipList.removeAll(remove);
+        System.out.println("---------------\n");
+        System.out.println("---------------\n");
+        System.out.println("---------------\n");
 
         System.out.println(skipList);
         System.out.println("---------------\n");
+        skipList.printPointers();
+        System.out.println("---------------\n");
 
-
-//        skipList.printPointers();
+        System.out.println("ReBalancing.......");
+        System.out.println("---------------\n");
+        System.out.println("---------------\n");
+        System.out.println("---------------\n");
+        skipList.reBalance();
+        skipList.printPointers();
+        System.out.println("---------------\n");
     }
 }
