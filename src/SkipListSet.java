@@ -9,11 +9,7 @@ public class SkipListSet <T extends Comparable<T>> implements SortedSet<T> {
 
         private SkipListSetIterator() {
             prev = null;
-            current = null;
-        }
-        public SkipListSetIterator(Item head) {
-            prev = null;
-            current = head.right;
+            current = head.bottom;
         }
 
         @Override
@@ -29,6 +25,15 @@ public class SkipListSet <T extends Comparable<T>> implements SortedSet<T> {
                 return prev.data;
             }
             else return null;
+        }
+
+        @Override
+        public void remove() {
+            if(prev != null) {
+                SkipListSet.this.remove(prev.data);
+                prev = null;
+            }
+            throw new IllegalStateException("The next method has not yet been called, or the remove method has already been called after the last call to the next method");
         }
 
         @Override
@@ -185,6 +190,13 @@ public class SkipListSet <T extends Comparable<T>> implements SortedSet<T> {
         maxHeight = head.height;
         size = 0;
     }
+    public SkipListSet(Collection<T> c) {
+        head = new ItemTower(null, 1);
+        maxHeight = head.height;
+        size = 0;
+
+        addAll(c);
+    }
 
     public void reBalance() {
 
@@ -218,20 +230,19 @@ public class SkipListSet <T extends Comparable<T>> implements SortedSet<T> {
     @Override
     // NOT IMPLEMENTING
     public SortedSet<T> subSet(T fromElement, T toElement) {
-        return null;
+        throw new UnsupportedOperationException();
     }
 
     @Override
     // NOT IMPLEMENTING
     public SortedSet<T> headSet(T toElement) {
-        return null;
+        throw new UnsupportedOperationException();
     }
 
     @Override
     // NOT IMPLEMENTING
     public SortedSet<T> tailSet(T fromElement) {
-
-        return null;
+        throw new UnsupportedOperationException();
     }
 
     @Override
@@ -241,10 +252,12 @@ public class SkipListSet <T extends Comparable<T>> implements SortedSet<T> {
 
     @Override
     public T last() {
-        Iterator<T> it = iterator();
-        T last = null;
-        while(it.hasNext()) last = it.next();
-        return last;
+        Item walker = head.top;
+        while(walker.down != null) {
+            walker = walker.down;
+            while(walker.right != null) walker = walker.right;
+        }
+        return walker.data;
     }
 
     @Override
@@ -271,7 +284,7 @@ public class SkipListSet <T extends Comparable<T>> implements SortedSet<T> {
 
     @Override
     public Iterator<T> iterator() {
-        return new SkipListSetIterator(head.bottom);
+        return new SkipListSetIterator();
     }
 
     @Override
